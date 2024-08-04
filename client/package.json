@@ -23,6 +23,7 @@
     "@angular/platform-browser": "~8.2.14",
     "@angular/platform-browser-dynamic": "~8.2.14",
     "@angular/router": "~8.2.14",
+    "@ant-design/icons-angular": "^8.1.1",
     "@types/bson": "^4.0.1",
     "@types/lodash": "^4.14.149",
     "bson": "^4.0.3",
