@@ -1,4 +1,4 @@
 export const environment = {
   production: true,
-  apiRoot: ''
+  apiRoot: '/mongo-gui'
 };

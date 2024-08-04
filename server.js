@@ -16,32 +16,34 @@ const authMiddleware = require('./src/controllers/auth');
 // const pkg = require('./package.json');
 // updateNotifier({ pkg }).notify();
 
+const basePath = '/mongo-gui'; 
+
 // initialize app
 const app = express();
 
 // middleware for simple authorization.
-app.use(authMiddleware.auth);
+app.use(basePath, authMiddleware.auth);
 
 // serve static files form public
-app.use(express.static('public'));
+app.use(basePath, express.static('public'));
 
 // process gzipped static files
-app.use(gzipProcessor(__dirname + '/public'));
+app.use(basePath, gzipProcessor(__dirname + '/public'));
 
 // enables cors
-app.use(cors());
+app.use(basePath, cors());
 
 // parse application/x-www-form-urlencoded
-app.use(bodyParser.urlencoded({ extended: false }));
+app.use(basePath, bodyParser.urlencoded({ extended: false }));
 
 // parse application/json
-app.use(bodyParser.json({ limit: process.env.BODY_SIZE || '50mb' }));
+app.use(basePath, bodyParser.json({ limit: process.env.BODY_SIZE || '50mb' }));
 
 // api routing
-app.use('/databases', databasesRoute);
+app.use(basePath+'/databases', databasesRoute);
 
 // serve home page
-app.get('/', (req, res) => res.sendFile(__dirname + '/public/index.html'));
+app.get(basePath+'/', (req, res) => res.sendFile(__dirname + '/public/index.html'));
 
 // connect to database
 dataAccessAdapter.InitDB(app);

@@ -10,8 +10,8 @@
     "e2e": "ng e2e",
     "clean": "rm -rf dist && rm -rf ../public",
     "compress": "npx gzipper compress ./dist ../public",
-    "build:prod": "ng build --prod",
-    "clean-build-compress": "npm run clean && npm run build:prod && npm run compress"
+    "build:prod": "ng build --prod  --deploy-url ./ --base-href ./",
+    "clean-build-compress": "npm run build:prod && npm run compress"
   },
   "private": true,
   "dependencies": {
