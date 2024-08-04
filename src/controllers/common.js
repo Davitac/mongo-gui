@@ -54,14 +54,13 @@ function listCollections(req, res, next) {
       collections = collections.filter(collection => !collection.name.startsWith('system.'));
       let proms = [];
       collections.forEach(collection => {
-        proms.push(dataAccessAdapter.ConnectToCollection(
-          dbName,
-          collection.name
-        ).stats()
+        proms.push(dataAccessAdapter.ConnectToDb(
+          dbName
+        ).command({ collStats: collection.name })
           .then((stats) => {
             collection.stats = {
               count: stats.count,
-              size: stats.totalSize
+              size: stats.size
             };
           }));
       });
