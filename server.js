@@ -16,7 +16,7 @@ const authMiddleware = require('./src/controllers/auth');
 // const pkg = require('./package.json');
 // updateNotifier({ pkg }).notify();
 
-const basePath = '/mongo-gui'; 
+const basePath = process.env.BASE_PATH || '/mongo-gui'; 
 
 // initialize app
 const app = express();
