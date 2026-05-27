@@ -35,6 +35,12 @@ router.post('/delete', documentCtrl.deleteOne);
 // aggregations
 router.post('/aggregate', documentCtrl.aggregate);
 
+// bounded aggregation preview
+router.post('/aggregate-preview', documentCtrl.aggregatePreview);
+
+// cursor-based export
+router.post('/export', documentCtrl.exportDocuments);
+
 // generate query from prompt
 router.post('/generate-query', documentCtrl.generateQuery);
 

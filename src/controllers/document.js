@@ -2,6 +2,7 @@ const ObjectID = require('mongodb').ObjectID;
 const EJSON = require('bson').EJSON;
 const openai = require('../services/openai');  
 const Model = require('../models');
+const exportUtils = require('./exportUtils');
 
 
 const getModel = (req) => {
@@ -204,6 +205,73 @@ function aggregate(req, res, next) {
   sendResponse(dbOperation, req, res, next);
 }
 
+async function aggregatePreview(req, res, next) {
+  try {
+    const model = getModel(req);
+    const request = exportUtils.normalizeAggregationPreviewRequest(req.body, req.query);
+    exportUtils.validateReadOnlyPipeline(request.pipeline);
+    const previewPipeline = request.pipeline.concat([{ $limit: request.limit }]);
+    const cursor = model.aggregate(previewPipeline, {
+      allowDiskUse: request.allowDiskUse,
+      batchSize: request.batchSize,
+    });
+    let data = {
+      documents: await cursor.toArray(),
+      limit: request.limit,
+    };
+    data.count = data.documents.length;
+    if (req.query.ContentType === 'ejson')
+      data = EJSON.stringify(data, {relaxed: false});
+    res.send(data);
+  } catch (err) {
+    res.status(400).send(err.toString());
+  }
+}
+
+async function exportDocuments(req, res, next) {
+  let cursor;
+  try {
+    const model = getModel(req);
+    const request = exportUtils.normalizeExportRequest(req.body);
+
+    if (request.mode === 'aggregate') {
+      exportUtils.validateReadOnlyPipeline(request.pipeline);
+      cursor = model.aggregate(request.pipeline, {
+        allowDiskUse: true,
+        batchSize: request.batchSize,
+      });
+    } else {
+      cursor = model.find(request.filter || {}, { batchSize: request.batchSize });
+    }
+
+    exportUtils.setExportHeaders(res, req.params.collectionName, request.format);
+
+    res.on('close', () => {
+      if (!res.writableEnded && cursor && cursor.close) cursor.close();
+    });
+
+    if (request.format === 'csv') {
+      await exportUtils.streamCursorAsCsv(cursor, res, request.fields);
+    } else if (request.format === 'ndjson') {
+      await exportUtils.streamCursorAsNdjson(cursor, res);
+    } else {
+      await exportUtils.streamCursorAsJson(cursor, res);
+    }
+  } catch (err) {
+    if (!res.headersSent) {
+      return res.status(400).send(err.toString());
+    }
+    console.log(err);
+    if (!res.writableEnded) res.end();
+  } finally {
+    if (cursor && cursor.close) {
+      try {
+        await cursor.close();
+      } catch (err) {}
+    }
+  }
+}
+
 async function generateQuery(req, res, next) {
   const query = await getQueryFromPrompt(req);
   res.send(query);
@@ -222,5 +290,7 @@ module.exports = {
   stats,
   count,
   aggregate,
+  aggregatePreview,
+  exportDocuments,
   generateQuery,
 };

@@ -17,6 +17,9 @@ class Model {
     if (filter.skip) {
       records = records.skip(+filter.skip);
     }
+    if (filter.batchSize) {
+      records = records.batchSize(+filter.batchSize);
+    }
     return records;
   }
 
@@ -36,8 +39,8 @@ class Model {
   //   return this.collection.updateOne(query, data);
   // }
 
-  aggregate(query) {
-    return this.collection.aggregate(query);
+  aggregate(query, options = {}) {
+    return this.collection.aggregate(query, options);
   }
 
   replaceOne(query, data) {
