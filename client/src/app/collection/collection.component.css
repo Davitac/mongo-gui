@@ -141,3 +141,37 @@
   background-color: rgba(24,144,255, 0.2);
   overflow: hidden;
 }
+
+.aggregation-toolbar {
+  display: grid;
+  grid-template-columns: auto 100px 1fr;
+  align-items: center;
+  column-gap: 12px;
+  margin-bottom: 10px;
+}
+
+.aggregation-editor {
+  display: block;
+  height: 260px;
+  margin-bottom: 10px;
+}
+
+.aggregation-preview {
+  max-height: 280px;
+  overflow: auto;
+  border-top: 1px solid #e5e5e5;
+  margin-top: 10px;
+  padding-top: 10px;
+}
+
+.aggregation-preview-header {
+  color: #777;
+  margin-bottom: 8px;
+}
+
+.aggregation-document {
+  background: #fff;
+  border: 1px solid #e5e5e5;
+  margin-bottom: 8px;
+  padding: 8px;
+}

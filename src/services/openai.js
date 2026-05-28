@@ -1,6 +1,12 @@
 const OpenAI = require('openai');
 
-const openai = new OpenAI();
+const getClient = () => {
+  if (!process.env.OPENAI_API_KEY) {
+    throw new Error('OPENAI_API_KEY is required only for prompt query generation');
+  }
+
+  return new OpenAI();
+};
 
 const getQuery = async (meta, prompt) => {
   const systemPrompt = `
@@ -27,7 +33,7 @@ const getQuery = async (meta, prompt) => {
 
   `;
 
-  const completion = await openai.chat.completions.create({
+  const completion = await getClient().chat.completions.create({
     messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: prompt }

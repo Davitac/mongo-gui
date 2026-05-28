@@ -72,6 +72,13 @@ export class CollectionComponent implements OnInit {
   exportAs = 'json';
   exportData: any;
   exportError: any;
+  showAggregationForm = false;
+  aggregationPipeline = '[\n  { "$match": {} },\n  { "$limit": 100 }\n]';
+  aggregationLimit = 100;
+  aggregationRunning = false;
+  aggregationError = '';
+  aggregationPreview: any;
+  aggregationExportAs = 'json';
   count = 0;
   ngOnInit() {
     this.query();
@@ -478,6 +485,50 @@ export class CollectionComponent implements OnInit {
     this.exportButton = true;
   }
 
+  getIncludedExportAttributes() {
+    return this.attributes
+      .filter((attribute) => attribute.include)
+      .map((attribute) => attribute.label);
+  }
+
+  submitChunkedExport(payload): void {
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = this.API.getExportUrl(this.database, this.collection);
+    form.target = '_blank';
+    form.style.display = 'none';
+
+    const input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = 'payload';
+    input.value = JSON.stringify(payload);
+    form.appendChild(input);
+
+    document.body.appendChild(form);
+    form.submit();
+    document.body.removeChild(form);
+  }
+
+  exportCollectionChunked(): void {
+    try {
+      this.exporting = true;
+      this.submitChunkedExport({
+        mode: 'find',
+        format: this.exportAs,
+        filter: this.ejsonFilter || EJSON.serialize({}),
+        fields: this.exportAs === 'csv' ? this.getIncludedExportAttributes() : [],
+        batchSize: 1000,
+      });
+      this.message.info('Chunked export started');
+      this.closeExportModal();
+    } catch (err) {
+      this.exportError = err.message || err;
+    } finally {
+      this.exporting = false;
+      this.exportButton = true;
+    }
+  }
+
   exportCollection(): void {
     this.exporting = true;
     this.exportButton = false;
@@ -521,5 +572,64 @@ export class CollectionComponent implements OnInit {
         this.exportButton = true;
         this.exporting = false;
       });
+  }
+
+  openAggregationForm(): void {
+    this.showAggregationForm = true;
+    this.aggregationError = '';
+  }
+
+  closeAggregationForm(): void {
+    this.showAggregationForm = false;
+    this.aggregationRunning = false;
+    this.aggregationError = '';
+  }
+
+  parseAggregationPipeline() {
+    const pipeline = JSON.parse(this.aggregationPipeline || '[]');
+    if (!(pipeline instanceof Array)) {
+      throw new Error('Aggregation pipeline must be a JSON array');
+    }
+    return pipeline;
+  }
+
+  runAggregation(): void {
+    let pipeline;
+    try {
+      this.aggregationError = '';
+      pipeline = EJSON.serialize(this.parseAggregationPipeline());
+    } catch (err) {
+      this.aggregationError = err.message || err;
+      return;
+    }
+
+    this.aggregationRunning = true;
+    this.API.aggregatePreview(
+      this.database,
+      this.collection,
+      pipeline,
+      this.aggregationLimit
+    ).subscribe((result: any) => {
+      this.aggregationPreview = EJSON.deserialize(result);
+    }, (err) => {
+      this.aggregationError = err.error || err.message || 'Aggregation failed';
+    }).add(() => {
+      this.aggregationRunning = false;
+    });
+  }
+
+  exportAggregationChunked(): void {
+    try {
+      this.aggregationError = '';
+      this.submitChunkedExport({
+        mode: 'aggregate',
+        format: this.aggregationExportAs,
+        pipeline: EJSON.serialize(this.parseAggregationPipeline()),
+        batchSize: 1000,
+      });
+      this.message.info('Chunked aggregation export started');
+    } catch (err) {
+      this.aggregationError = err.message || err;
+    }
   }
 }

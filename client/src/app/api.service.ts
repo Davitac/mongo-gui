@@ -84,6 +84,19 @@ export class ApiService {
     );
   }
 
+  aggregatePreview(dbName, collectionName, query, limit = 100) {
+    return this.http.post(
+      `${
+        this.BASE_URL
+      }/${dbName}/collections/${collectionName}/documents/aggregate-preview?ContentType=ejson&incomingType=ejson&limit=${limit}`,
+      query
+    );
+  }
+
+  getExportUrl(dbName, collectionName) {
+    return `${this.BASE_URL}/${dbName}/collections/${collectionName}/documents/export`;
+  }
+
   getQueryFromPrompt(dbName, collectionName, prompt) {
     return this.http.post(
       `${this.BASE_URL}/${dbName}/collections/${collectionName}/documents/generate-query`,

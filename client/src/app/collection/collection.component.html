@@ -108,10 +108,15 @@
             </ng-template>
             <div *nzModalFooter>
               <button nz-button nzType="default" (click)="closeExportModal()" [disabled]="exporting">Close</button>
+              <button nz-button nzType="default" (click)="exportCollectionChunked()" [disabled]="exporting">{{exporting ?
+                'Starting...' : 'Export chunked'}}</button>
               <button nz-button nzType="primary" (click)="exportCollection()" [disabled]="!exportButton">{{exporting ?
                 'Exporting...' : 'Export'}}</button>
             </div>
           </nz-modal>
+          <button nz-button nzType="default" (click)="openAggregationForm()">
+            <i nz-icon nzType="database" nzTheme="outline"></i>Aggregation
+          </button>
           <button nz-button nzType="default" (click)="query()">
             <i nz-icon nzType="reload"></i>{{ loading ? 'Loading...' : 'Reload' }}
           </button>
@@ -196,4 +201,38 @@
   <ngx-monaco-editor *ngIf="showAdvancedSearchForm" [options]="editorOptions" [(ngModel)]="filter"></ngx-monaco-editor>
   <a href="https://docs.mongodb.com/manual/reference/mongodb-extended-json/index.html#example" target="_blank">Learn
     more about querying against ObjectId, Date and other types of fields</a>
+</nz-modal>
+
+<nz-modal [(nzVisible)]="showAggregationForm" nzTitle="Aggregation" nzWidth="900" nzMaskClosable="false"
+  (nzOnCancel)="closeAggregationForm()" [nzContent]="aggregationContent">
+  <ng-template #aggregationContent>
+    <div class="aggregation-toolbar">
+      <label>Preview limit</label>
+      <input nz-input type="number" min="1" max="1000" [(ngModel)]="aggregationLimit" />
+      <nz-radio-group [(ngModel)]="aggregationExportAs">
+        <label nz-radio nzValue="json">JSON</label>
+        <label nz-radio nzValue="csv">CSV</label>
+      </nz-radio-group>
+    </div>
+    <ngx-monaco-editor *ngIf="showAggregationForm" class="aggregation-editor" [options]="editorOptions"
+      [(ngModel)]="aggregationPipeline"></ngx-monaco-editor>
+    <nz-alert *ngIf="aggregationError" nzType="error" [nzMessage]="aggregationError" nzShowIcon></nz-alert>
+    <div class="aggregation-preview" *ngIf="aggregationPreview">
+      <div class="aggregation-preview-header">
+        Preview returned {{aggregationPreview.count}} document(s)
+      </div>
+      <div *ngFor="let doc of aggregationPreview.documents" class="aggregation-document">
+        <app-document [data]="doc"></app-document>
+      </div>
+    </div>
+  </ng-template>
+  <div *nzModalFooter>
+    <button nz-button nzType="default" (click)="closeAggregationForm()" [disabled]="aggregationRunning">Close</button>
+    <button nz-button nzType="default" (click)="exportAggregationChunked()" [disabled]="aggregationRunning">
+      Export chunked
+    </button>
+    <button nz-button nzType="primary" (click)="runAggregation()" [nzLoading]="aggregationRunning">
+      Run aggregation
+    </button>
+  </div>
 </nz-modal>
