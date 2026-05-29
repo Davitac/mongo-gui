@@ -1,4 +1,4 @@
-const ObjectID = require('mongodb').ObjectID;
+const { ObjectId } = require('mongodb');
 const EJSON = require('bson').EJSON;
 const openai = require('../services/openai');  
 const Model = require('../models');
@@ -10,6 +10,16 @@ const getModel = (req) => {
   const collectionName = req.params.collectionName;
   return new Model(dbName, collectionName);
 };
+
+function createObjectId() {
+  return new ObjectId();
+}
+
+function resolveDocumentId(document = {}, fallback) {
+  return document._id === null ?
+    null :
+    document._id || fallback || createObjectId();
+}
 
 const sendResponse = (dbOperation, req, res, next) => {
   dbOperation
@@ -28,10 +38,7 @@ function middleware(req, res, next) {
         EJSON.deserialize(req.body) :
         req.body;
     if (!(req.body instanceof Array)) {
-      req.documentId =
-        req.body._id === null ?
-          null :
-          req.body._id || req.params.documentId || ObjectID();
+      req.documentId = resolveDocumentId(req.body, req.params.documentId);
       if (req.documentId === 'filter') req.documentId = '';
     }
     next();
@@ -67,10 +74,7 @@ function bulkWrite(req, res, next) {
   const body = Array.isArray(req.body) ? req.body : [req.body];
   const operations = [];
   body.forEach((document) => {
-    document._id =
-      document._id === null ?
-        null :
-        document._id || req.documentId || ObjectID();
+    document._id = resolveDocumentId(document, req.documentId);
     operations.push({
       replaceOne: {
         filter: {
@@ -279,6 +283,7 @@ async function generateQuery(req, res, next) {
 
 module.exports = {
   middleware,
+  resolveDocumentId,
   find,
   findOne,
   filter,

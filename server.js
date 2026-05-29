@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 // eslint-disable-next-line strict
 require('dotenv').config();
+const fs = require('fs');
+const path = require('path');
 const cors = require('cors');
 const argv = require('minimist')(process.argv.slice(2));
 const express = require('express');
@@ -17,6 +19,20 @@ const authMiddleware = require('./src/controllers/auth');
 // updateNotifier({ pkg }).notify();
 
 const basePath = process.env.BASE_PATH || '/mongo-gui'; 
+const publicPath = path.join(__dirname, 'public');
+
+function sendIndex(req, res, next) {
+  const indexPath = path.join(publicPath, 'index.html');
+  const gzippedIndexPath = `${indexPath}.gz`;
+
+  if (fs.existsSync(indexPath)) return res.sendFile(indexPath);
+  if (fs.existsSync(gzippedIndexPath)) {
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Content-Encoding', 'gzip');
+    return res.sendFile(gzippedIndexPath);
+  }
+  return next();
+}
 
 // initialize app
 const app = express();
@@ -28,7 +44,7 @@ app.use(basePath, authMiddleware.auth);
 app.use(basePath, express.static('public'));
 
 // process gzipped static files
-app.use(basePath, gzipProcessor(__dirname + '/public'));
+app.use(basePath, gzipProcessor(publicPath));
 
 // enables cors
 app.use(basePath, cors());
@@ -43,7 +59,7 @@ app.use(basePath, bodyParser.json({ limit: process.env.BODY_SIZE || '50mb' }));
 app.use(basePath+'/databases', databasesRoute);
 
 // serve home page
-app.get(basePath+'/', (req, res) => res.sendFile(__dirname + '/public/index.html'));
+app.get(basePath+'/', sendIndex);
 
 // connect to database
 dataAccessAdapter.InitDB(app);

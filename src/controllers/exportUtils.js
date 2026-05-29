@@ -115,23 +115,112 @@ function indentLines(text, spaces) {
   return text.split('\n').map(line => indent + line).join('\n');
 }
 
+function toBuffer(chunk) {
+  if (Buffer.isBuffer(chunk)) return chunk;
+  if (chunk instanceof Uint8Array) return Buffer.from(chunk);
+  return Buffer.from(String(chunk), 'utf8');
+}
+
+function writeStreamChunk(output, chunk) {
+  const buffer = toBuffer(chunk);
+  if (!buffer.length) return Promise.resolve();
+  if (output.destroyed || output.writableEnded) {
+    return Promise.reject(new Error('Output stream is closed'));
+  }
+
+  return new Promise((resolve, reject) => {
+    let settled = false;
+
+    function cleanup() {
+      output.removeListener('error', onError);
+      output.removeListener('close', onClose);
+    }
+
+    function done(err) {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      if (err) reject(err);
+      else resolve();
+    }
+
+    function onError(err) {
+      done(err);
+    }
+
+    function onClose() {
+      if (output.writableEnded || output.writableFinished) done();
+      else done(new Error('Output stream is closed'));
+    }
+
+    output.once('error', onError);
+    output.once('close', onClose);
+
+    try {
+      output.write(buffer, done);
+    } catch (err) {
+      done(err);
+    }
+  });
+}
+
+function endWritable(output, chunk) {
+  if (output.destroyed || output.writableEnded) return Promise.resolve();
+
+  return new Promise((resolve, reject) => {
+    let settled = false;
+
+    function cleanup() {
+      output.removeListener('error', onError);
+      output.removeListener('close', onClose);
+    }
+
+    function done(err) {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      if (err) reject(err);
+      else resolve();
+    }
+
+    function onError(err) {
+      done(err);
+    }
+
+    function onClose() {
+      if (output.writableEnded || output.writableFinished) done();
+      else done(new Error('Output stream is closed'));
+    }
+
+    output.once('error', onError);
+    output.once('close', onClose);
+
+    try {
+      if (typeof chunk === 'undefined') output.end(done);
+      else output.end(toBuffer(chunk), done);
+    } catch (err) {
+      done(err);
+    }
+  });
+}
+
 async function streamCursorAsJson(cursor, res) {
   let first = true;
-  res.write('[');
+  await writeStreamChunk(res, '[');
   for await (const document of cursor) {
-    res.write(first ? '\n' : ',\n');
-    res.write(indentLines(stringifyDocumentAsClassicJson(document), 2));
+    await writeStreamChunk(res, first ? '\n' : ',\n');
+    await writeStreamChunk(res, indentLines(stringifyDocumentAsClassicJson(document), 2));
     first = false;
   }
-  res.end(first ? ']' : '\n]');
+  await endWritable(res, first ? ']' : '\n]');
 }
 
 async function streamCursorAsNdjson(cursor, res) {
   for await (const document of cursor) {
-    res.write(EJSON.stringify(document, { relaxed: false }));
-    res.write('\n');
+    await writeStreamChunk(res, EJSON.stringify(document, { relaxed: false }));
+    await writeStreamChunk(res, '\n');
   }
-  res.end();
+  await endWritable(res);
 }
 
 async function streamCursorAsCsv(cursor, res, fields) {
@@ -139,23 +228,23 @@ async function streamCursorAsCsv(cursor, res, fields) {
   let wroteHeader = false;
 
   if (resolvedFields.length) {
-    res.write(resolvedFields.map(csvEscapeValue).join(','));
-    res.write('\n');
+    await writeStreamChunk(res, resolvedFields.map(csvEscapeValue).join(','));
+    await writeStreamChunk(res, '\n');
     wroteHeader = true;
   }
 
   for await (const document of cursor) {
     if (!wroteHeader) {
       resolvedFields = Object.keys(document);
-      res.write(resolvedFields.map(csvEscapeValue).join(','));
-      res.write('\n');
+      await writeStreamChunk(res, resolvedFields.map(csvEscapeValue).join(','));
+      await writeStreamChunk(res, '\n');
       wroteHeader = true;
     }
-    res.write(resolvedFields.map(field => csvEscapeValue(readField(document, field))).join(','));
-    res.write('\n');
+    await writeStreamChunk(res, resolvedFields.map(field => csvEscapeValue(readField(document, field))).join(','));
+    await writeStreamChunk(res, '\n');
   }
 
-  res.end();
+  await endWritable(res);
 }
 
 function safeFilename(value) {
@@ -179,12 +268,15 @@ function setExportHeaders(res, collectionName, format) {
 
 module.exports = {
   csvEscapeValue,
+  endWritable,
   normalizeAggregationPreviewRequest,
   normalizeExportRequest,
+  safeFilename,
   setExportHeaders,
   stringifyDocumentAsClassicJson,
   streamCursorAsCsv,
   streamCursorAsJson,
   streamCursorAsNdjson,
   validateReadOnlyPipeline,
+  writeStreamChunk,
 };
