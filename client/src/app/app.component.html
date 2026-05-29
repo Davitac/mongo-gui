@@ -28,6 +28,9 @@
               }}<span class="action"><span><i nz-icon nzType="plus-circle" nzTheme="outline"
                     nzTooltipTitle="Add new collection" nzTooltipPlacement="top" nz-tooltip
                     (click)="openModal('addTable', { database: db.name })"></i></span>
+                <span><i nz-icon nzType="download" nzTheme="outline" nzTooltipTitle="Export database"
+                    nzTooltipPlacement="top" nz-tooltip
+                    (click)="openModal('exportDataBase', { database: db.name })"></i></span>
                 <span><i nz-icon nzType="delete" nzTheme="fill" nzTooltipTitle="Drop database" nzTooltipPlacement="top"
                     nz-tooltip (click)="openModal('dropDataBase', { database: db.name })"></i></span>
               </span>
@@ -105,8 +108,12 @@
             </td>
             <td>{{ data.sizeOnDisk | fileSize: 2 }}</td>
             <td>{{ data.collections.length }}
-              <span class="drop-db" style="float: right; cursor: pointer;"><i nz-icon nzType="delete" nzTooltipTitle="Drop database" nzTooltipPlacement="top"
-                nz-tooltip (click)="openModal('dropDataBase', { database: data.name })"></i></span>
+              <span class="database-actions" style="float: right; cursor: pointer;">
+                <i nz-icon nzType="download" nzTooltipTitle="Export database" nzTooltipPlacement="top"
+                  nz-tooltip (click)="openModal('exportDataBase', { database: data.name })"></i>
+                <i nz-icon nzType="delete" nzTooltipTitle="Drop database" nzTooltipPlacement="top"
+                  nz-tooltip (click)="openModal('dropDataBase', { database: data.name })"></i>
+              </span>
             </td>
           </tr>
         </tbody>
@@ -171,6 +178,8 @@
     </nz-content>
   </nz-layout>
 </nz-layout>
+
+<iframe [attr.id]="databaseExportFrameName" [attr.name]="databaseExportFrameName" style="display: none;"></iframe>
 
 <nz-modal nzMaskClosable="false" [(nzVisible)]="addTable" (nzOnCancel)="closeModal('addTable')" nzTitle="Add new collection" [nzFooter]="null"
   [nzBodyStyle]="{height: '237px'}">
@@ -267,6 +276,43 @@
             {{ dropDataBaseLoader ? 'Dropping ...' : 'Drop' }}
           </button>
           <button class="cancel" nz-button nzType="default" (click)="closeModal('dropDataBase')">
+            Cancel
+          </button>
+        </div>
+      </nz-form-control>
+    </nz-form-item>
+  </form>
+</nz-modal>
+<nz-modal nzMaskClosable="false" [(nzVisible)]="exportDataBase" nzTitle="Export database" (nzOnCancel)="closeModal('exportDataBase')"
+  [nzBodyStyle]="{height: '230px'}" [nzFooter]="null">
+  <form nz-form>
+    <nz-form-item>
+      <nz-form-label [nzSm]="7" [nzXs]="24" nzFor="database">
+        Database
+      </nz-form-label>
+      <nz-form-control [nzSm]="14" [nzXs]="24">
+        <input nz-input id="database" [value]="exportDataBaseTarget?.database" readonly />
+      </nz-form-control>
+    </nz-form-item>
+    <nz-form-item>
+      <nz-form-label [nzSm]="7" [nzXs]="24" nzFor="databaseExportFormat">
+        Format
+      </nz-form-label>
+      <nz-form-control [nzSm]="14" [nzXs]="24">
+        <nz-radio-group id="databaseExportFormat" [(ngModel)]="exportDataBaseAs" name="databaseExportFormat">
+          <label nz-radio nzValue="json">JSON</label>
+          <label nz-radio nzValue="csv">CSV</label>
+        </nz-radio-group>
+      </nz-form-control>
+    </nz-form-item>
+    <nz-form-item>
+      <nz-form-control>
+        <div class="exportDBFooter">
+          <button type="button" class="add" nz-button nzType="primary" [disabled]="exportDataBaseLoader"
+            (click)="exportDatabaseChunked()">
+            {{ exportDataBaseLoader ? 'Exporting ...' : 'Export' }}
+          </button>
+          <button type="button" class="cancel" nz-button nzType="default" (click)="closeModal('exportDataBase')">
             Cancel
           </button>
         </div>

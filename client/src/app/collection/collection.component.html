@@ -58,6 +58,18 @@
                     *ngIf="importError">
                     <span style="padding: 15px;">{{importError}}</span>
                   </div>
+                  <div class="import-progress" *ngIf="importing || importProgressPercent > 0">
+                    <div class="import-progress-header">
+                      <span>{{importProgressText}}</span>
+                      <strong>{{importProgressPercent}}%</strong>
+                    </div>
+                    <div class="import-progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100"
+                      [attr.aria-valuenow]="importProgressPercent">
+                      <div class="import-progress-bar" [class.complete]="importProgressPercent === 100"
+                        [style.width.%]="importProgressPercent"></div>
+                    </div>
+                    <div class="import-progress-meta">{{importProgressImportedRecords}} records confirmed</div>
+                  </div>
                   <div *ngIf="file && attributes[0]" style="margin-top: 10px;">Attributes:</div>
                   <div *ngIf="file && attributes[0]" class="attributes">
                     <div *ngFor="let attribute of attributes">

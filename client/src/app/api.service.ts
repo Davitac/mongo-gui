@@ -97,6 +97,10 @@ export class ApiService {
     return `${this.BASE_URL}/${dbName}/collections/${collectionName}/documents/export`;
   }
 
+  getDatabaseExportUrl(dbName) {
+    return `${this.BASE_URL}/${dbName}/export`;
+  }
+
   getQueryFromPrompt(dbName, collectionName, prompt) {
     return this.http.post(
       `${this.BASE_URL}/${dbName}/collections/${collectionName}/documents/generate-query`,

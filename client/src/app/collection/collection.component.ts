@@ -7,8 +7,29 @@ import {
   NzTreeHigherOrderServiceToken,
 } from 'ng-zorro-antd';
 import * as _ from 'lodash';
+import {
+  calculateImportProgressPercent,
+  formatFileReadError,
+  getCsvHeaderFieldsFromText,
+  getCsvParseError,
+  getImportFileFormat,
+  ImportFileFormat,
+  readBlobAsText,
+  readFirstTextChunk,
+  readJsonFileRecords,
+} from './import-file-utils';
+import { IMPORT_BATCH_BYTES, IMPORT_BATCH_SIZE } from './import-config';
 
 const Papa = require('papaparse');
+
+interface ImportState {
+  batch: any[];
+  bytes: number;
+  importedRecords: number;
+  confirmedRecords: number;
+  readBytes: number;
+  totalBytes: number;
+}
 
 interface simpleSearch {
   key: any;
@@ -61,8 +82,13 @@ export class CollectionComponent implements OnInit {
   importButton = false;
   importError: any;
   file = '';
+  importFile: any;
+  importFileFormat: ImportFileFormat | null = null;
   rowData: any;
   importing = false;
+  importProgressPercent = 0;
+  importProgressText = '';
+  importProgressImportedRecords = 0;
   attributes = [];
   isImportVisible = false;
   ignore = false;
@@ -287,50 +313,73 @@ export class CollectionComponent implements OnInit {
     this.attributes = [];
     this.rowData = [];
     this.importButton = false;
-    if (file.type !== 'text/csv' && file.type !== 'application/json') {
+    this.importFile = null;
+    this.importFileFormat = null;
+    this.resetImportProgress();
+    const sourceFile = file.originFileObj || file;
+    const fileName = file.name || sourceFile.name || '';
+    const fileFormat = getImportFileFormat({
+      name: fileName,
+      type: sourceFile.type || file.type,
+    });
+
+    if (fileFormat === 'zip') {
+      this.message.error('Extract the database ZIP first, then import a JSON or CSV collection file.');
+      this.importing = false;
+      this.file = '';
+      return false;
+    }
+    if (!fileFormat) {
       this.message.error('You can only upload either JSON or CSV files!');
       this.importing = false;
       this.file = '';
       return false;
     }
-    this.file = file.name;
+    this.file = fileName;
+    this.importFile = sourceFile;
+    this.importFileFormat = fileFormat;
     try {
-      if (file.type === 'text/csv') {
-        Papa.parse(file, {
-          header: true,
-          skipEmptyLines: true,
-          complete: (result) => {
-            if (!result.errors[0]) {
-              const keys = _.take(_.keys(result.data[0]), 1500);
-              this.attributes = _.map(keys, (key) => ({
-                include: true,
-                label: key,
-                type: 'String',
-              }));
-              this.rowData = result.data;
-              this.importButton = true;
-            } else {
-              this.importError = result.errors[0].message;
-              this.rowData = [];
-              this.importButton = false;
-            }
-          },
-        });
+      if (fileFormat === 'csv') {
+        readFirstTextChunk(sourceFile)
+          .then((text) => {
+            if (this.file !== fileName) return;
+            const keys = _.take(getCsvHeaderFieldsFromText(text), 1500);
+            if (!keys.length) throw new Error('The CSV file does not contain a header row.');
+            this.attributes = _.map(keys, (key) => ({
+              include: true,
+              label: key,
+              type: 'String',
+            }));
+            this.rowData = [];
+            this.importButton = true;
+          })
+          .catch((err) => {
+            if (this.file !== fileName) return;
+            this.importError = formatFileReadError(err);
+            this.rowData = [];
+            this.importButton = false;
+          });
       } else {
-        let reader = new FileReader();
-        reader.readAsText(file);
-        reader.onload = (e) => {
-          this.rowData = reader.result;
-          this.importButton = true;
-        };
-        reader.onerror = (e) => {
-          this.importError = reader.error;
-          this.rowData = [];
-          this.importButton = false;
-        };
+        readFirstTextChunk(sourceFile)
+          .then((text) => {
+            if (this.file !== fileName) return;
+            const trimmed = String(text || '').replace(/^\ufeff/, '').trim();
+            if (!trimmed) throw new Error('The JSON file is empty.');
+            if (trimmed[0] !== '[' && trimmed[0] !== '{') {
+              throw new Error('The JSON import file must contain a document or an array of documents.');
+            }
+            this.rowData = [];
+            this.importButton = true;
+          })
+          .catch((err) => {
+            if (this.file !== fileName) return;
+            this.importError = formatFileReadError(err);
+            this.rowData = [];
+            this.importButton = false;
+          });
       }
     } catch (err) {
-      this.importError = err.message;
+      this.importError = formatFileReadError(err);
       this.rowData = [];
       this.importButton = false;
     }
@@ -340,13 +389,25 @@ export class CollectionComponent implements OnInit {
   showImportModal(): void {
     this.isImportVisible = true;
     this.file = '';
+    this.importFile = null;
+    this.importFileFormat = null;
     this.rowData = [];
     this.importError = '';
     this.importButton = false;
     this.importing = false;
+    this.resetImportProgress();
   }
 
   importRecords(): void {
+    if (this.importFileFormat === 'json' && this.importFile) {
+      this.importJsonRecords();
+      return;
+    }
+    if (this.importFileFormat === 'csv' && this.importFile) {
+      this.importCsvRecords();
+      return;
+    }
+
     let records: any = [];
     try {
       if (this.attributes[0]) {
@@ -442,9 +503,236 @@ export class CollectionComponent implements OnInit {
     }
   }
 
+  private beginImport(): void {
+    this.importError = '';
+    this.importing = true;
+    this.importButton = false;
+    this.resetImportProgress();
+  }
+
+  private finishImportSuccess(importedRecords: number): void {
+    this.importProgressPercent = 100;
+    this.importProgressText = `Imported ${importedRecords} records`;
+    this.importProgressImportedRecords = importedRecords;
+    this.importing = false;
+    this.importButton = false;
+    this.message.success(`Success! Imported ${importedRecords} records.`);
+    this.query();
+    this.closeImportModal();
+  }
+
+  private finishImportError(err: any): void {
+    this.importError = formatFileReadError(err);
+    this.importButton = true;
+    this.importing = false;
+  }
+
+  private resetImportProgress(): void {
+    this.importProgressPercent = 0;
+    this.importProgressText = '';
+    this.importProgressImportedRecords = 0;
+  }
+
+  private createImportState(): ImportState {
+    return {
+      batch: [],
+      bytes: 0,
+      importedRecords: 0,
+      confirmedRecords: 0,
+      readBytes: 0,
+      totalBytes: this.importFile && this.importFile.size ? this.importFile.size : 0,
+    };
+  }
+
+  private updateImportProgress(state: ImportState, readBytes?: number, complete = false): void {
+    if (typeof readBytes === 'number') {
+      state.readBytes = Math.max(state.readBytes, Math.min(readBytes, state.totalBytes || readBytes));
+    }
+
+    this.importProgressPercent = calculateImportProgressPercent(
+      state.totalBytes,
+      state.readBytes,
+      complete
+    );
+    this.importProgressImportedRecords = state.confirmedRecords;
+
+    if (complete) {
+      this.importProgressText = `Imported ${state.confirmedRecords} records`;
+    } else if (state.confirmedRecords) {
+      this.importProgressText = `Imported ${state.confirmedRecords} records`;
+    } else if (state.readBytes) {
+      this.importProgressText = 'Reading file';
+    } else {
+      this.importProgressText = 'Preparing import';
+    }
+  }
+
+  private createDocumentsBatch(records: any[], state?: ImportState): Promise<any> {
+    if (!records.length) return Promise.resolve();
+    const recordCount = records.length;
+    return this.API.createDocuments(
+      this.database,
+      this.collection,
+      EJSON.serialize(records)
+    ).toPromise().then((response) => {
+      if (state) {
+        state.confirmedRecords += recordCount;
+        this.updateImportProgress(state);
+      }
+      return response;
+    });
+  }
+
+  private async queueImportRecord(record: any, state: ImportState): Promise<void> {
+    const recordBytes = JSON.stringify(record).length;
+    if (
+      state.batch.length &&
+      (state.batch.length >= IMPORT_BATCH_SIZE || state.bytes + recordBytes > IMPORT_BATCH_BYTES)
+    ) {
+      await this.flushImportState(state);
+    }
+    state.batch.push(record);
+    state.bytes += recordBytes;
+    state.importedRecords += 1;
+  }
+
+  private async flushImportState(state: ImportState): Promise<void> {
+    if (!state.batch.length) return;
+    const batch = state.batch;
+    state.batch = [];
+    state.bytes = 0;
+    await this.createDocumentsBatch(batch, state);
+  }
+
+  private async importJsonRecords(): Promise<void> {
+    this.beginImport();
+    const state = this.createImportState();
+    this.updateImportProgress(state);
+
+    try {
+      const firstChunk = await readFirstTextChunk(this.importFile, 4096);
+      const trimmed = String(firstChunk || '').replace(/^\ufeff/, '').trim();
+      if (!trimmed) throw new Error('The JSON file is empty.');
+
+      if (trimmed[0] === '{') {
+        const documentText = await readBlobAsText(this.importFile);
+        this.updateImportProgress(state, state.totalBytes);
+        await this.queueImportRecord(JSON.parse(documentText), state);
+      } else {
+        for await (const record of readJsonFileRecords(this.importFile, undefined, (bytesRead) => {
+          this.updateImportProgress(state, bytesRead);
+        })) {
+          await this.queueImportRecord(record, state);
+        }
+      }
+
+      await this.flushImportState(state);
+      if (!state.importedRecords) throw new Error('No records found in file.');
+      this.updateImportProgress(state, state.totalBytes, true);
+      this.finishImportSuccess(state.importedRecords);
+    } catch (err) {
+      this.finishImportError(err);
+    }
+  }
+
+  private convertCsvRowToRecord(row: any): any {
+    let record = {};
+    for (let attribute of this.attributes) {
+      if (!attribute.include) continue;
+      const rowValue = _.get(row, attribute.label);
+      if (rowValue === null || typeof rowValue === 'undefined' || rowValue === '') continue;
+
+      let value;
+      switch (attribute.type) {
+        case 'ObjectId':
+          value = new ObjectId(rowValue);
+          break;
+
+        case 'Boolean':
+          value = String(rowValue).toLowerCase() === 'true';
+          break;
+
+        case 'Date':
+          value = { $date: rowValue };
+          break;
+
+        case 'Number':
+          value = { $numberInt: rowValue };
+          break;
+
+        default:
+          value = String(rowValue);
+          break;
+      }
+      _.set(record, attribute.label, value);
+    }
+    return record;
+  }
+
+  private async importCsvRows(rows: any[], state: ImportState): Promise<void> {
+    for (const row of rows) {
+      await this.queueImportRecord(this.convertCsvRowToRecord(row), state);
+    }
+  }
+
+  private importCsvRecords(): void {
+    this.beginImport();
+    const state = this.createImportState();
+    this.updateImportProgress(state);
+
+    new Promise((resolve, reject) => {
+      let failed = false;
+      Papa.parse(this.importFile, {
+        header: true,
+        skipEmptyLines: true,
+        chunk: (result, parser) => {
+          parser.pause();
+          const csvParseError = getCsvParseError(result, { requireFields: false });
+          if (csvParseError) {
+            failed = true;
+            parser.abort();
+            reject(new Error(csvParseError));
+            return;
+          }
+          if (result.meta && typeof result.meta.cursor === 'number') {
+            this.updateImportProgress(state, result.meta.cursor);
+          }
+          this.importCsvRows(result.data || [], state)
+            .then(() => {
+              if (!failed) parser.resume();
+            })
+            .catch((err) => {
+              failed = true;
+              parser.abort();
+              reject(err);
+            });
+        },
+        complete: () => {
+          if (failed) return;
+          this.updateImportProgress(state, state.totalBytes);
+          this.flushImportState(state)
+            .then(() => {
+              if (!state.importedRecords) throw new Error('No records found in file.');
+              resolve();
+            })
+            .catch(reject);
+        },
+        error: (err) => {
+          failed = true;
+          reject(err);
+        },
+      });
+    })
+      .then(() => this.finishImportSuccess(state.importedRecords))
+      .catch((err) => this.finishImportError(err));
+  }
+
   closeImportModal(): void {
     this.isImportVisible = false;
     this.importing = false;
+    this.importFile = null;
+    this.importFileFormat = null;
+    this.resetImportProgress();
   }
 
   getExportAttributes(): void {

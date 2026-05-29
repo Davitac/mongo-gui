@@ -202,11 +202,24 @@ nz-footer {
   border-radius: 0px 0px 4px 4px;
   padding: 30px;
 }
+.exportDBFooter {
+  width: 110.2%;
+  margin-left: -24px;
+  border: 1px solid #e8e8e8;
+  border-radius: 0px 0px 4px 4px;
+  padding: 30px;
+}
 
+.database-actions,
 .drop-db, .drop-table {
   visibility: hidden;
 }
 
+tr:hover .database-actions,
 tr:hover .drop-db, tr:hover .drop-table {
   visibility: visible;
+}
+
+.database-actions i + i {
+  margin-left: 10px;
 }

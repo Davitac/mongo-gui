@@ -50,6 +50,11 @@ export class AppComponent implements OnInit {
   addTable = false;
   dropTable = false;
   dropDataBase = false;
+  exportDataBase = false;
+  exportDataBaseLoader = false;
+  exportDataBaseAs = 'json';
+  exportDataBaseTarget: any;
+  databaseExportFrameName = 'mongo-gui-database-export-frame';
   active = 'databases';
   db: any;
 
@@ -264,6 +269,53 @@ export class AppComponent implements OnInit {
       });
   }
 
+  private ensureDatabaseExportFrame() {
+    let iframe = document.getElementById(this.databaseExportFrameName) as HTMLIFrameElement;
+    if (iframe) return iframe;
+
+    iframe = document.createElement('iframe');
+    iframe.id = this.databaseExportFrameName;
+    iframe.name = this.databaseExportFrameName;
+    iframe.style.display = 'none';
+    document.body.appendChild(iframe);
+    return iframe;
+  }
+
+  submitDatabaseExport(payload): void {
+    this.ensureDatabaseExportFrame();
+
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = this.Api.getDatabaseExportUrl(this.exportDataBaseTarget.database);
+    form.target = this.databaseExportFrameName;
+    form.style.display = 'none';
+
+    const input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = 'payload';
+    input.value = JSON.stringify(payload);
+    form.appendChild(input);
+
+    document.body.appendChild(form);
+    form.submit();
+    document.body.removeChild(form);
+  }
+
+  exportDatabaseChunked(): void {
+    if (!this.exportDataBaseTarget || !this.exportDataBaseTarget.database) return;
+
+    try {
+      this.exportDataBaseLoader = true;
+      this.submitDatabaseExport({
+        format: this.exportDataBaseAs,
+        batchSize: 1000,
+      });
+      this.closeModal('exportDataBase');
+    } finally {
+      this.exportDataBaseLoader = false;
+    }
+  }
+
   closeModal(title) {
     this[title] = false;
   }
@@ -285,6 +337,11 @@ export class AppComponent implements OnInit {
     if (title === 'dropDataBase') {
       this.dropDataBaseForm.reset();
       this.dropDataBaseForm.controls.database.setValue(options.database);
+    }
+    if (title === 'exportDataBase') {
+      this.exportDataBaseTarget = options;
+      this.exportDataBaseAs = 'json';
+      this.exportDataBaseLoader = false;
     }
     // opens modal
     this[title] = true;
