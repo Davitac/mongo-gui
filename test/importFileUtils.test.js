@@ -7,7 +7,10 @@ require('../client/node_modules/ts-node/register/transpile-only');
 
 const {
   calculateImportProgressPercent,
+  convertCsvRowToRecord,
+  createImportAttributes,
   formatFileReadError,
+  getCollectionNameFromImportFile,
   getCsvParseError,
   getCsvHeaderFieldsFromText,
   getCsvPreviewError,
@@ -15,6 +18,7 @@ const {
   getImportFileFormat,
   readBlobTextChunks,
   readJsonArrayRecords,
+  validateBulkImportFiles,
 } = require('../client/src/app/collection/import-file-utils');
 
 test('detects downloaded JSON and CSV files even when the browser exposes a generic MIME type', () => {
@@ -25,6 +29,50 @@ test('detects downloaded JSON and CSV files even when the browser exposes a gene
 
 test('detects database export ZIPs so the import UI can reject them with a clear message', () => {
   assert.equal(getImportFileFormat({ name: 'database.zip', type: 'application/zip' }), 'zip');
+});
+
+test('derives new collection names from JSON and CSV filenames', () => {
+  assert.equal(getCollectionNameFromImportFile('orders.json'), 'orders');
+  assert.equal(getCollectionNameFromImportFile('customer.accounts.csv'), 'customer.accounts');
+  assert.equal(getCollectionNameFromImportFile('  inventory snapshot.JSON  '), 'inventory snapshot');
+});
+
+test('validates bulk import file lists before creating collections', () => {
+  const files = [
+    { name: 'orders.json', type: 'application/json' },
+    { name: 'customers.csv', type: 'text/csv' },
+  ];
+
+  assert.deepEqual(
+    validateBulkImportFiles(files, ['products']).map(file => ({
+      collectionName: file.collectionName,
+      format: file.format,
+    })),
+    [
+      { collectionName: 'orders', format: 'json' },
+      { collectionName: 'customers', format: 'csv' },
+    ]
+  );
+
+  assert.throws(
+    () => validateBulkImportFiles([{ name: 'orders.json' }, { name: 'orders.csv' }], []),
+    /Duplicate target collection/
+  );
+  assert.throws(
+    () => validateBulkImportFiles([{ name: 'products.csv' }], ['products']),
+    /already exists/
+  );
+});
+
+test('converts CSV rows through reusable import attributes', () => {
+  const attributes = createImportAttributes(['name', 'active', 'stock']);
+  attributes.find(attribute => attribute.label === 'active').type = 'Boolean';
+  attributes.find(attribute => attribute.label === 'stock').type = 'Number';
+
+  assert.deepEqual(
+    convertCsvRowToRecord({ name: 'Boots', active: 'true', stock: '12' }, attributes),
+    { name: 'Boots', active: true, stock: { $numberInt: '12' } }
+  );
 });
 
 test('normalizes browser file read failures into an actionable message', () => {

@@ -2,6 +2,19 @@ export type ImportFileFormat = 'json' | 'csv' | 'zip';
 export const DEFAULT_IMPORT_READ_CHUNK_SIZE = 1024 * 1024;
 export type ImportReadProgressCallback = (bytesRead: number, totalBytes: number) => void;
 const Papa = require('papaparse');
+const { ObjectId } = require('bson');
+
+export interface ImportAttribute {
+  include: boolean;
+  label: string;
+  type: string;
+}
+
+export interface BulkImportFile {
+  file: any;
+  collectionName: string;
+  format: ImportFileFormat;
+}
 
 export function getImportFileFormat(file: { name?: string; type?: string }): ImportFileFormat | null {
   const name = String(file && file.name || '').toLowerCase();
@@ -16,6 +29,121 @@ export function getImportFileFormat(file: { name?: string; type?: string }): Imp
   if (type.indexOf('zip') > -1 || name.endsWith('.zip')) return 'zip';
 
   return null;
+}
+
+export function getCollectionNameFromImportFile(fileName: string): string {
+  const baseName = String(fileName || '')
+    .replace(/\\/g, '/')
+    .split('/')
+    .pop()
+    .trim();
+  const collectionName = baseName.replace(/\.(json|csv)$/i, '').trim();
+
+  if (!collectionName) throw new Error('Import file name must produce a collection name.');
+  if (collectionName.indexOf('\0') > -1) throw new Error('Collection names cannot contain null characters.');
+  if (collectionName.indexOf('$') > -1) throw new Error('Collection names cannot contain "$".');
+  if (collectionName.startsWith('system.')) throw new Error('Collection names cannot start with "system.".');
+
+  return collectionName;
+}
+
+export function validateBulkImportFiles(
+  files: Array<{ name?: string; type?: string }>,
+  existingCollectionNames: string[] = []
+): BulkImportFile[] {
+  if (!files || !files.length) throw new Error('Select at least one JSON or CSV file to import.');
+
+  const existingCollections = new Set((existingCollectionNames || []).map(name => String(name || '')));
+  const targetCollections = new Set<string>();
+
+  return files.map((file) => {
+    const format = getImportFileFormat(file);
+    if (format === 'zip') {
+      throw new Error('Extract database ZIP exports first, then import the JSON or CSV collection files.');
+    }
+    if (!format) {
+      throw new Error(`Unsupported import file: ${file && file.name || 'unknown file'}. Use JSON or CSV files.`);
+    }
+
+    const collectionName = getCollectionNameFromImportFile(file.name || '');
+    if (targetCollections.has(collectionName)) {
+      throw new Error(`Duplicate target collection "${collectionName}" in selected files.`);
+    }
+    if (existingCollections.has(collectionName)) {
+      throw new Error(`Collection "${collectionName}" already exists in the selected database.`);
+    }
+
+    targetCollections.add(collectionName);
+    return {
+      file,
+      collectionName,
+      format,
+    };
+  });
+}
+
+export function createImportAttributes(fields: string[]): ImportAttribute[] {
+  return (fields || []).map(field => ({
+    include: true,
+    label: field,
+    type: 'String',
+  }));
+}
+
+function getPathValue(source: any, path: string): any {
+  return String(path || '').split('.').reduce((value, segment) => {
+    if (value === null || typeof value === 'undefined') return undefined;
+    return value[segment];
+  }, source);
+}
+
+function setPathValue(target: any, path: string, value: any): void {
+  const segments = String(path || '').split('.').filter(Boolean);
+  if (!segments.length) return;
+
+  let current = target;
+  segments.forEach((segment, index) => {
+    if (index === segments.length - 1) {
+      current[segment] = value;
+      return;
+    }
+    if (!current[segment] || typeof current[segment] !== 'object') current[segment] = {};
+    current = current[segment];
+  });
+}
+
+export function convertCsvRowToRecord(row: any, attributes: ImportAttribute[]): any {
+  const record = {};
+  for (const attribute of attributes || []) {
+    if (!attribute.include) continue;
+    const rowValue = getPathValue(row, attribute.label);
+    if (rowValue === null || typeof rowValue === 'undefined' || rowValue === '') continue;
+
+    let value;
+    switch (attribute.type) {
+      case 'ObjectId':
+        value = new ObjectId(rowValue);
+        break;
+
+      case 'Boolean':
+        value = String(rowValue).toLowerCase() === 'true';
+        break;
+
+      case 'Date':
+        value = { $date: rowValue };
+        break;
+
+      case 'Number':
+        value = { $numberInt: rowValue };
+        break;
+
+      default:
+        value = String(rowValue);
+        break;
+    }
+    setPathValue(record, attribute.label, value);
+  }
+  return record;
 }
 
 export function formatFileReadError(error: any): string {

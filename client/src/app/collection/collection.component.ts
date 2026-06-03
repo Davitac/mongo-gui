@@ -9,6 +9,8 @@ import {
 import * as _ from 'lodash';
 import {
   calculateImportProgressPercent,
+  convertCsvRowToRecord,
+  createImportAttributes,
   formatFileReadError,
   getCsvHeaderFieldsFromText,
   getCsvParseError,
@@ -345,11 +347,7 @@ export class CollectionComponent implements OnInit {
             if (this.file !== fileName) return;
             const keys = _.take(getCsvHeaderFieldsFromText(text), 1500);
             if (!keys.length) throw new Error('The CSV file does not contain a header row.');
-            this.attributes = _.map(keys, (key) => ({
-              include: true,
-              label: key,
-              type: 'String',
-            }));
+            this.attributes = createImportAttributes(keys);
             this.rowData = [];
             this.importButton = true;
           })
@@ -636,37 +634,7 @@ export class CollectionComponent implements OnInit {
   }
 
   private convertCsvRowToRecord(row: any): any {
-    let record = {};
-    for (let attribute of this.attributes) {
-      if (!attribute.include) continue;
-      const rowValue = _.get(row, attribute.label);
-      if (rowValue === null || typeof rowValue === 'undefined' || rowValue === '') continue;
-
-      let value;
-      switch (attribute.type) {
-        case 'ObjectId':
-          value = new ObjectId(rowValue);
-          break;
-
-        case 'Boolean':
-          value = String(rowValue).toLowerCase() === 'true';
-          break;
-
-        case 'Date':
-          value = { $date: rowValue };
-          break;
-
-        case 'Number':
-          value = { $numberInt: rowValue };
-          break;
-
-        default:
-          value = String(rowValue);
-          break;
-      }
-      _.set(record, attribute.label, value);
-    }
-    return record;
+    return convertCsvRowToRecord(row, this.attributes);
   }
 
   private async importCsvRows(rows: any[], state: ImportState): Promise<void> {
