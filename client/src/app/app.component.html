@@ -28,9 +28,12 @@
               }}<span class="action"><span><i nz-icon nzType="plus-circle" nzTheme="outline"
                     nzTooltipTitle="Add new collection" nzTooltipPlacement="top" nz-tooltip
                     (click)="openModal('addTable', { database: db.name })"></i></span>
-                <span><i nz-icon nzType="download" nzTheme="outline" nzTooltipTitle="Export database"
+                <span><i nz-icon nzType="upload" nzTheme="outline" nzTooltipTitle="Export database"
                     nzTooltipPlacement="top" nz-tooltip
                     (click)="openModal('exportDataBase', { database: db.name })"></i></span>
+                <span><i nz-icon nzType="download" nzTheme="outline" nzTooltipTitle="Import collections"
+                    nzTooltipPlacement="top" nz-tooltip
+                    (click)="$event.stopPropagation(); openModal('bulkImport', { database: db.name })"></i></span>
                 <span><i nz-icon nzType="delete" nzTheme="fill" nzTooltipTitle="Drop database" nzTooltipPlacement="top"
                     nz-tooltip (click)="openModal('dropDataBase', { database: db.name })"></i></span>
               </span>
@@ -109,8 +112,10 @@
             <td>{{ data.sizeOnDisk | fileSize: 2 }}</td>
             <td>{{ data.collections.length }}
               <span class="database-actions" style="float: right; cursor: pointer;">
-                <i nz-icon nzType="download" nzTooltipTitle="Export database" nzTooltipPlacement="top"
+                <i nz-icon nzType="upload" nzTooltipTitle="Export database" nzTooltipPlacement="top"
                   nz-tooltip (click)="openModal('exportDataBase', { database: data.name })"></i>
+                <i nz-icon nzType="download" nzTooltipTitle="Import collections" nzTooltipPlacement="top"
+                  nz-tooltip (click)="openModal('bulkImport', { database: data.name })"></i>
                 <i nz-icon nzType="delete" nzTooltipTitle="Drop database" nzTooltipPlacement="top"
                   nz-tooltip (click)="openModal('dropDataBase', { database: data.name })"></i>
               </span>
@@ -313,6 +318,80 @@
             {{ exportDataBaseLoader ? 'Exporting ...' : 'Export' }}
           </button>
           <button type="button" class="cancel" nz-button nzType="default" (click)="closeModal('exportDataBase')">
+            Cancel
+          </button>
+        </div>
+      </nz-form-control>
+    </nz-form-item>
+  </form>
+</nz-modal>
+<nz-modal nzMaskClosable="false" [(nzVisible)]="bulkImport" nzTitle="Import collections" (nzOnCancel)="closeModal('bulkImport')"
+  [nzBodyStyle]="{height: '440px'}" [nzFooter]="null">
+  <form nz-form>
+    <nz-form-item>
+      <nz-form-label [nzSm]="7" [nzXs]="24" nzFor="bulkImportDatabase">
+        Database
+      </nz-form-label>
+      <nz-form-control [nzSm]="14" [nzXs]="24">
+        <input nz-input id="bulkImportDatabase" [value]="bulkImportTarget?.database" readonly />
+      </nz-form-control>
+    </nz-form-item>
+    <nz-form-item>
+      <nz-form-label [nzSm]="7" [nzXs]="24" nzFor="bulkImportFiles">
+        Files
+      </nz-form-label>
+      <nz-form-control [nzSm]="14" [nzXs]="24">
+        <input id="bulkImportFiles" type="file" multiple accept=".json,.csv"
+          (change)="onBulkImportFilesSelected($event)" [disabled]="bulkImportLoader" />
+      </nz-form-control>
+    </nz-form-item>
+    <div
+      style="background-color: red; color: #fff; height: auto; width: 100%; margin-bottom: 10px; border-radius: 10px;"
+      *ngIf="bulkImportError">
+      <span style="padding: 15px;">{{bulkImportError}}</span>
+    </div>
+    <div class="bulk-import-list" *ngIf="bulkImportPlan.length">
+      <nz-table #bulkImportTable [nzData]="bulkImportPlan" nzSize="small" [nzShowPagination]="false">
+        <thead>
+          <tr>
+            <th>File</th>
+            <th>Collection</th>
+            <th>Format</th>
+            <th>Size</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let item of bulkImportTable.data">
+            <td>{{item.file.name}}</td>
+            <td>{{item.collectionName}}</td>
+            <td>{{item.format | uppercase}}</td>
+            <td>{{item.file.size | fileSize: 2}}</td>
+          </tr>
+        </tbody>
+      </nz-table>
+    </div>
+    <div class="bulk-import-progress" *ngIf="bulkImportLoader || bulkImportProgressPercent > 0">
+      <div class="bulk-import-progress-header">
+        <span>{{bulkImportProgressText}}</span>
+        <strong>{{bulkImportProgressPercent}}%</strong>
+      </div>
+      <div class="bulk-import-progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100"
+        [attr.aria-valuenow]="bulkImportProgressPercent">
+        <div class="bulk-import-progress-bar" [style.width.%]="bulkImportProgressPercent"></div>
+      </div>
+      <div class="bulk-import-progress-meta">
+        {{bulkImportImportedCollections}} collections, {{bulkImportImportedRecords}} records confirmed
+      </div>
+    </div>
+    <nz-form-item>
+      <nz-form-control>
+        <div class="bulkImportFooter">
+          <button type="button" class="add" nz-button nzType="primary"
+            [disabled]="!bulkImportPlan.length || bulkImportLoader" (click)="importDatabaseCollections()">
+            {{ bulkImportLoader ? 'Importing ...' : 'Import' }}
+          </button>
+          <button type="button" class="cancel" nz-button nzType="default" [disabled]="bulkImportLoader"
+            (click)="closeModal('bulkImport')">
             Cancel
           </button>
         </div>
